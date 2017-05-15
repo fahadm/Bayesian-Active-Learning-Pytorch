@@ -44,6 +44,7 @@ test_loader = torch.utils.data.DataLoader(
     batch_size=batch_size, shuffle=True, **kwargs)
 
 
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -53,36 +54,36 @@ class Net(nn.Module):
 #         self.fc1 = nn.Linear(320, 50)
 #         self.fc2 = nn.Linear(50, 10)
         self.conv = nn.Sequential(
-#             nn.Conv2d(1, nb_filters, kernel_size=nb_conv),
-#             nn.ReLU(),
-            nn.Conv2d(nb_filters, 20, kernel_size=nb_conv),
+            nn.Conv2d(1, nb_filters, kernel_size=nb_conv),
+            nn.ReLU(),
+            nn.Conv2d(nb_filters, nb_filters, kernel_size=nb_conv),
             nn.ReLU(),
             nn.MaxPool2d(nb_pool),
             nn.Dropout(0.25),
-            nn.Conv2d(1, nb_filters*2, kernel_size=nb_conv),
+            nn.Conv2d(nb_filters, nb_filters*2, kernel_size=nb_conv),
             nn.ReLU(),
             nn.Conv2d(nb_filters*2, nb_filters*2, kernel_size=nb_conv),
             nn.ReLU(),
             nn.MaxPool2d(nb_pool),
-            nn.Dropout(0.25))
+            nn.Dropout(0.25)
+        )
         self.fc = nn.Sequential(
-            nn.Linear(14,128),
+            nn.Linear(1024,100),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(14,nb_classes)
+            nn.Linear(100,nb_classes)
         )
 
     def forward(self, x):
         x = self.conv(x)
-        x = x.view()
+        x = x.view(batch_size, -1)
         x = self.fc(x)
-        return F.log_softmax(x)
+        return F.Softmax(x)
 
-model = Net()
-    
 
-            
-            
+
+
+
 
 if cuda:
     model.cuda()
@@ -132,6 +133,3 @@ for epoch in range(1, epochs + 1):
 
 
 # In[ ]:
-
-
-
