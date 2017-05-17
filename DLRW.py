@@ -84,7 +84,7 @@ class Net(nn.Module):
 
 
 
-
+model = Net()
 if cuda:
     model.cuda()
 
