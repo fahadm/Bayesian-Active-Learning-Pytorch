@@ -43,6 +43,43 @@ test_loader = torch.utils.data.DataLoader(
                    ])),
     batch_size=batch_size, shuffle=True, **kwargs)
 
+def prepare_data():
+
+    train_data_all = train_loader_all.dataset.train_data
+    train_target_all = train_loader_all.dataset.train_labels
+    shuffler_idx = torch.randperm(train_target_all.size(0))
+    train_data_all = train_data_all[shuffler_idx]
+    train_target_all = train_target_all[shuffler_idx]
+
+
+    train_data = []
+    train_target = []
+    train_data_val = train_data_all[10000:10100, :,:]
+    train_target_val = train_target_all[10000:10100]
+    train_data_pool = train_data_all[20000:60000, :,:]
+    train_target_pool = train_target_all[20000:60000]
+
+    train_data_all = train_data_all[0:10000,:,:]
+    train_target_all = train_target_all[0:10000]
+
+    train_data_val.unsqueeze_(1)
+    train_data_pool.unsqueeze_(1)
+    train_data_all.unsqueeze_(1)
+
+    train_data_pool = train_data_pool.float()
+    train_data_val = train_data_val.float()
+    train_data_all = train_data_all.float()
+
+    for i in range(0,10):
+        arr = np.array(np.where(train_target_all.numpy()==i))
+        idx = np.random.permutation(arr)
+        data_i =  train_data_all.numpy()[ idx[0][0:2], :,:,: ] # pick the first 2 elements of the shuffled idx array
+        target_i = train_target_all.numpy()[idx[0][0:2]]
+        train_data.append(data_i)
+        train_target.append(target_i)
+    train_data = np.concatenate(train_data, axis = 0).astype('float32')
+    train_target = np.concatenate(train_target, axis=0)
+    return torch.from_numpy(train_data/255).float(), torch.from_numpy(train_target) , train_data_val/255,train_target_val, train_data_pool/255, train_target_pool
 
 
 class Net(nn.Module):
