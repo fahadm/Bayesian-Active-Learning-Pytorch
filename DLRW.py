@@ -80,6 +80,7 @@ def prepare_data():
     train_data = np.concatenate(train_data, axis = 0).astype('float32')
     train_target = np.concatenate(train_target, axis=0)
     return torch.from_numpy(train_data/255).float(), torch.from_numpy(train_target) , train_data_val/255,train_target_val, train_data_pool/255, train_target_pool
+train_data, train_target, val_data, val_target, pool_data, pool_target = prepare_data()
 
 
 class Net(nn.Module):
