@@ -83,6 +83,22 @@ def prepare_data():
 train_data, train_target, val_data, val_target, pool_data, pool_target = prepare_data()
 
 
+def initialize_train_set():
+    # Training Data set
+    global train_loader
+    train = data_utils.TensorDataset(train_data, train_target)
+    train_loader = data_utils.DataLoader(train, batch_size=batch_size, shuffle=True)
+
+def initialize_val_set():
+    global val_loader
+    #Validation Dataset
+    val = data_utils.TensorDataset(val_data,val_target)
+    val_loader = data_utils.DataLoader(val,batch_size=batch_size, shuffle = True)
+
+
+initialize_train_set()
+initialize_val_set()
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
