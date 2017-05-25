@@ -134,7 +134,7 @@ class Net(nn.Module):
         x = self.conv(x)
         x = x.view(batch_size, -1)
         x = self.fc(x)
-        return F.Softmax(x)
+        return x
     def _get_conv_output_size(self, shape):
         bs = batch_size
         input = Variable(torch.rand(bs, *shape))
