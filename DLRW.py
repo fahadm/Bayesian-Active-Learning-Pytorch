@@ -121,8 +121,10 @@ class Net(nn.Module):
             nn.MaxPool2d(nb_pool),
             nn.Dropout(0.25)
         )
+        input_size = self._get_conv_output_size(input_shape)
+
         self.fc = nn.Sequential(
-            nn.Linear(1024,100),
+            nn.Linear(input_size,100),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(100,nb_classes)
@@ -133,6 +135,12 @@ class Net(nn.Module):
         x = x.view(batch_size, -1)
         x = self.fc(x)
         return F.Softmax(x)
+    def _get_conv_output_size(self, shape):
+        bs = batch_size
+        input = Variable(torch.rand(bs, *shape))
+        output_feat = self.conv(input)
+        n_size = output_feat.data.view(bs, -1).size(1)
+        return n_size
 
 
 
