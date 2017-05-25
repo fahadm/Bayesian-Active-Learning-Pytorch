@@ -153,7 +153,9 @@ def train(epoch):
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.nll_loss(output, target)
+        criterion = nn.CrossEntropyLoss()
+
+        loss = criterion(output, target)
         loss.backward()
         optimizer.step()
         if batch_idx % log_interval == 0:
