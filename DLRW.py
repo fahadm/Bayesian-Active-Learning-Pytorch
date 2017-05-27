@@ -43,7 +43,61 @@ test_loader = torch.utils.data.DataLoader(
                    ])),
     batch_size=batch_size, shuffle=True, **kwargs)
 
+def prepare_data():
 
+    train_data_all = train_loader_all.dataset.train_data
+    train_target_all = train_loader_all.dataset.train_labels
+    shuffler_idx = torch.randperm(train_target_all.size(0))
+    train_data_all = train_data_all[shuffler_idx]
+    train_target_all = train_target_all[shuffler_idx]
+
+
+    train_data = []
+    train_target = []
+    train_data_val = train_data_all[10000:10100, :,:]
+    train_target_val = train_target_all[10000:10100]
+    train_data_pool = train_data_all[20000:60000, :,:]
+    train_target_pool = train_target_all[20000:60000]
+
+    train_data_all = train_data_all[0:10000,:,:]
+    train_target_all = train_target_all[0:10000]
+
+    train_data_val.unsqueeze_(1)
+    train_data_pool.unsqueeze_(1)
+    train_data_all.unsqueeze_(1)
+
+    train_data_pool = train_data_pool.float()
+    train_data_val = train_data_val.float()
+    train_data_all = train_data_all.float()
+
+    for i in range(0,10):
+        arr = np.array(np.where(train_target_all.numpy()==i))
+        idx = np.random.permutation(arr)
+        data_i =  train_data_all.numpy()[ idx[0][0:2], :,:,: ] # pick the first 2 elements of the shuffled idx array
+        target_i = train_target_all.numpy()[idx[0][0:2]]
+        train_data.append(data_i)
+        train_target.append(target_i)
+    train_data = np.concatenate(train_data, axis = 0).astype('float32')
+    train_target = np.concatenate(train_target, axis=0)
+    return torch.from_numpy(train_data/255).float(), torch.from_numpy(train_target) , train_data_val/255,train_target_val, train_data_pool/255, train_target_pool
+train_data, train_target, val_data, val_target, pool_data, pool_target = prepare_data()
+
+
+def initialize_train_set():
+    # Training Data set
+    global train_loader
+    train = data_utils.TensorDataset(train_data, train_target)
+    train_loader = data_utils.DataLoader(train, batch_size=batch_size, shuffle=True)
+
+def initialize_val_set():
+    global val_loader
+    #Validation Dataset
+    val = data_utils.TensorDataset(val_data,val_target)
+    val_loader = data_utils.DataLoader(val,batch_size=batch_size, shuffle = True)
+
+
+initialize_train_set()
+initialize_val_set()
 
 class Net(nn.Module):
     def __init__(self):
@@ -67,8 +121,10 @@ class Net(nn.Module):
             nn.MaxPool2d(nb_pool),
             nn.Dropout(0.25)
         )
+        input_size = self._get_conv_output_size(input_shape)
+
         self.fc = nn.Sequential(
-            nn.Linear(1024,100),
+            nn.Linear(input_size,100),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(100,nb_classes)
@@ -78,7 +134,13 @@ class Net(nn.Module):
         x = self.conv(x)
         x = x.view(batch_size, -1)
         x = self.fc(x)
-        return F.Softmax(x)
+        return x
+    def _get_conv_output_size(self, shape):
+        bs = batch_size
+        input = Variable(torch.rand(bs, *shape))
+        output_feat = self.conv(input)
+        n_size = output_feat.data.view(bs, -1).size(1)
+        return n_size
 
 
 
@@ -99,7 +161,9 @@ def train(epoch):
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.nll_loss(output, target)
+        criterion = nn.CrossEntropyLoss()
+
+        loss = criterion(output, target)
         loss.backward()
         optimizer.step()
         if batch_idx % log_interval == 0:
