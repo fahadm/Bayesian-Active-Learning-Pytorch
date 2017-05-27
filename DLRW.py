@@ -171,28 +171,71 @@ def train(epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
 
-def test(epoch):
-    model.eval()
+ef evaluate( input_data, stochastic = False, predict_classes=False):
+
+    if stochastic:
+        model.train() # we use dropout at test time
+    else:
+        model.eval()
+
+    predictions = []
     test_loss = 0
     correct = 0
-    for data, target in test_loader:
+    for data, target in input_data:
         if cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data, volatile=True), Variable(target)
+
         output = model(data)
-        test_loss += F.nll_loss(output, target).data[0]
+        softmaxed = F.softmax(output.cpu())
+
+        if predict_classes:
+            predictions.extend(np.argmax(softmaxed.data.numpy(),axis = -1))
+        else:
+            predictions.extend(softmaxed.data.numpy())
+        criterion = nn.CrossEntropyLoss()
+
+        loss = criterion(output, target)
+
+        test_loss += loss.data[0]
         pred = output.data.max(1)[1] # get the index of the max log-probability
         correct += pred.eq(target.data).cpu().sum()
+    return (test_loss, correct, predictions)
 
-    test_loss = test_loss
+def val(epoch):
+
+    test_loss = 0
+    correct = 0
+    test_loss, correct,_ =  evaluate(val_loader, stochastic= False)
+
+    test_loss /= len(val_loader) # loss function already averages over batch size
+
+
+    if epoch == epochs:
+        print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+        test_loss, correct, len(val_loader.dataset),
+        100. * correct / len(val_loader.dataset)))
+
+    return  test_loss, 100. * correct / len(val_loader.dataset)
+
+def test(epoch):
+
+    test_loss = 0
+    correct = 0
+    test_loss, correct,_ =  evaluate(test_loader, stochastic= False)
+
     test_loss /= len(test_loader) # loss function already averages over batch size
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+    if epoch == epochs:
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+
+    return test_loss, 100. * correct / len(test_loader.dataset)
 
 
 for epoch in range(1, epochs + 1):
     train(epoch)
+    val(epoch)
     test(epoch)
 
 
