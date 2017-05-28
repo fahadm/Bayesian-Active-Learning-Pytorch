@@ -99,14 +99,46 @@ def initialize_val_set():
 initialize_train_set()
 initialize_val_set()
 
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-#         self.conv1 = nn.Conv2d(1, nb_filters, kernel_size=nb_conv)
-#         self.conv2 = nn.Conv2d(nb_filters, 20, kernel_size=5)
-#         self.conv2_drop = nn.Dropout2d()
-#         self.fc1 = nn.Linear(320, 50)
-#         self.fc2 = nn.Linear(50, 10)
+# class Net(nn.Module):
+#     def __init__(self):
+#         super(Net, self).__init__()
+# #         self.conv1 = nn.Conv2d(1, nb_filters, kernel_size=nb_conv)
+# #         self.conv2 = nn.Conv2d(nb_filters, 20, kernel_size=5)
+# #         self.conv2_drop = nn.Dropout2d()
+# #         self.fc1 = nn.Linear(320, 50)
+# #         self.fc2 = nn.Linear(50, 10)
+#         self.conv = nn.Sequential(
+#             nn.Conv2d(1, nb_filters, kernel_size=nb_conv),
+#             nn.ReLU(),
+#             nn.Conv2d(nb_filters, nb_filters, kernel_size=nb_conv),
+#             nn.ReLU(),
+#             nn.MaxPool2d(nb_pool),
+#             nn.Dropout(0.25),
+#             nn.Conv2d(nb_filters, nb_filters*2, kernel_size=nb_conv),
+#             nn.ReLU(),
+#             nn.Conv2d(nb_filters*2, nb_filters*2, kernel_size=nb_conv),
+#             nn.ReLU(),
+#             nn.MaxPool2d(nb_pool),
+#             nn.Dropout(0.25)
+#         )
+#         self.fc = nn.Sequential(
+#             nn.Linear(1024,100),
+#             nn.ReLU(),
+#             nn.Dropout(0.5),
+#             nn.Linear(100,nb_classes)
+#         )
+#
+#     def forward(self, x):
+#         x = self.conv(x)
+#         x = x.view(batch_size, -1)
+#         x = self.fc(x)
+#         return F.Softmax(x)
+
+
+class Net_Correct(nn.Module):
+    def __init__(self, input_shape=(1, 28, 28)):
+        super(Net_Correct, self).__init__()
+
         self.conv = nn.Sequential(
             nn.Conv2d(1, nb_filters, kernel_size=nb_conv),
             nn.ReLU(),
@@ -114,33 +146,26 @@ class Net(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(nb_pool),
             nn.Dropout(0.25),
-            nn.Conv2d(nb_filters, nb_filters*2, kernel_size=nb_conv),
-            nn.ReLU(),
-            nn.Conv2d(nb_filters*2, nb_filters*2, kernel_size=nb_conv),
-            nn.ReLU(),
-            nn.MaxPool2d(nb_pool),
-            nn.Dropout(0.25)
         )
         input_size = self._get_conv_output_size(input_shape)
-
         self.fc = nn.Sequential(
-            nn.Linear(input_size,100),
+            nn.Linear(input_size,128),
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(100,nb_classes)
+            nn.Linear(128,nb_classes)
         )
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = x.view(batch_size, -1)
-        x = self.fc(x)
-        return x
     def _get_conv_output_size(self, shape):
         bs = batch_size
         input = Variable(torch.rand(bs, *shape))
         output_feat = self.conv(input)
         n_size = output_feat.data.view(bs, -1).size(1)
         return n_size
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
 
 
 
