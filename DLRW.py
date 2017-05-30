@@ -180,6 +180,7 @@ optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= decay )
 
 def train(epoch):
     model.train()
+    loss = None
     for batch_idx, (data, target) in enumerate(train_loader):
         if cuda:
             data, target = data.cuda(), target.cuda()
@@ -191,12 +192,13 @@ def train(epoch):
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
-        if batch_idx % log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.data[0]))
+    if epoch == epochs:
+        print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            epoch, batch_idx * len(data), len(train_loader.dataset),
+            100. * batch_idx / len(train_loader), loss.data[0]))
 
-ef evaluate( input_data, stochastic = False, predict_classes=False):
+    return loss.data[0]
+def evaluate( input_data, stochastic = False, predict_classes=False):
 
     if stochastic:
         model.train() # we use dropout at test time
