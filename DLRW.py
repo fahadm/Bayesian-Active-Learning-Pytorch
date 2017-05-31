@@ -171,12 +171,8 @@ class Net_Correct(nn.Module):
 
 
 
-model = Net()
-if cuda:
-    model.cuda()
-
-decay = 10/10000
-optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= decay )
+model = None
+optimizer = None
 
 def train(epoch):
     model.train()
@@ -198,6 +194,7 @@ def train(epoch):
             100. * batch_idx / len(train_loader), loss.data[0]))
 
     return loss.data[0]
+
 def evaluate( input_data, stochastic = False, predict_classes=False):
 
     if stochastic:
@@ -258,12 +255,49 @@ def test(epoch):
         100. * correct / len(test_loader.dataset)))
 
     return test_loss, 100. * correct / len(test_loader.dataset)
+def init_model():
+    global model
+    global optimizer
+    model = Net_Correct()
+
+    if cuda:
+        model.cuda()
+
+    decay = 3.5 / train_data.size(0)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=decay)
+
+def train_test_val_loop(init_train_set, disable_test = True):
+    if init_train_set:
+        initialize_train_set()
+    init_model()
+
+    train_loss = 0
+    val_loss = 0
+    val_accuracy = 0
+    test_loss = -1
+    test_accuracy = -1
+    print("Training again")
+    for epoch in range(1, epochs + 1):
+        train_loss = train(epoch)
+        val_loss, val_accuracy = val(epoch)
+
+    if disable_test is False:
+        test_loss, test_accuracy = test(epoch)
+    return  train_loss,val_loss,test_loss,val_accuracy,test_accuracy
+
+def main(argv):
+    start_time = time.time()
+    print (str(argv[0]))
+    initialize_train_set()
+    init_model()
+    print ("Training without acquisition")
+    for epoch in range(1, epochs + 1):
+        train_loss = train(epoch)
+        val_loss, accuracy = val(epoch)
+
+    print("--- %s seconds ---" % (time.time() - start_time))
 
 
-for epoch in range(1, epochs + 1):
-    train(epoch)
-    val(epoch)
-    test(epoch)
-
-
+if __name__ == '__main__':
+    main(sys.argv[1:])
 # In[ ]:
