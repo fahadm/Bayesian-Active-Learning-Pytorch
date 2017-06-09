@@ -4,14 +4,19 @@
 # In[11]:
 
 from __future__ import print_function
+import sys
 import argparse
+import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
-
+import torch.utils.data as data_utils
+from scipy.stats import mode
+import time
 
 cuda = False
 batch_size = 128
@@ -29,7 +34,7 @@ nb_pool = 2
 nb_conv = 3
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
-train_loader = torch.utils.data.DataLoader(
+train_loader_all = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=True, download=True,
                    transform=transforms.Compose([
                        transforms.ToTensor(),
@@ -38,11 +43,9 @@ train_loader = torch.utils.data.DataLoader(
     batch_size=batch_size, shuffle=True, **kwargs)
 test_loader = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                       transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
+                       transforms.ToTensor()
                    ])),
     batch_size=batch_size, shuffle=True, **kwargs)
-
 def prepare_data():
 
     train_data_all = train_loader_all.dataset.train_data
@@ -80,8 +83,11 @@ def prepare_data():
     train_data = np.concatenate(train_data, axis = 0).astype('float32')
     train_target = np.concatenate(train_target, axis=0)
     return torch.from_numpy(train_data/255).float(), torch.from_numpy(train_target) , train_data_val/255,train_target_val, train_data_pool/255, train_target_pool
+
 train_data, train_target, val_data, val_target, pool_data, pool_target = prepare_data()
 
+train_loader = None
+val_loader = None
 
 def initialize_train_set():
     # Training Data set
@@ -98,6 +104,8 @@ def initialize_val_set():
 
 initialize_train_set()
 initialize_val_set()
+
+
 
 # class Net(nn.Module):
 #     def __init__(self):
@@ -167,13 +175,8 @@ class Net_Correct(nn.Module):
         x = self.fc(x)
         return x
 
-
-
-
-
 model = None
 optimizer = None
-
 def train(epoch):
     model.train()
     loss = None
@@ -194,6 +197,9 @@ def train(epoch):
             100. * batch_idx / len(train_loader), loss.data[0]))
 
     return loss.data[0]
+
+
+
 
 def evaluate( input_data, stochastic = False, predict_classes=False):
 
@@ -255,6 +261,205 @@ def test(epoch):
         100. * correct / len(test_loader.dataset)))
 
     return test_loss, 100. * correct / len(test_loader.dataset)
+
+def getAcquisitionFunction(name):
+    if name == "BALD":
+        return bald_acquisition
+    elif name == "VAR_RATIOS":
+        return variation_ratios_acquisition
+    elif name == "MAX_ENTROPY":
+        return max_entroy_acquisition
+    elif name == "MEAN_STD":
+        return mean_std_acquisition
+    else:
+        print ("ACQUSITION FUNCTION NOT IMPLEMENTED")
+        sys.exit(-1)
+
+
+def acquire_points(argument,random_sample=False):
+    global train_data
+    global train_target
+    acquisition_iterations = 98
+    dropout_iterations = 50
+    Queries = 10
+    pool_all = np.zeros(shape=(1))
+
+    if argument == "RANDOM":
+        random_sample = True
+    else :
+        acquisition_function = getAcquisitionFunction(argument)
+
+    val_loss_hist = []
+    val_acc_hist = []
+    test_loss_hist = []
+    test_acc_hist = []
+    train_loss_hist = []
+    for i in range(acquisition_iterations):
+        pool_subset = 2000
+        print ("Acquisition Iteration " + str(i))
+        pool_subset_dropout = torch.from_numpy( np.asarray(random.sample(range(0, pool_data.size(0)), pool_subset)))
+        pool_data_dropout = pool_data[pool_subset_dropout]
+        pool_target_dropout = pool_target[pool_subset_dropout]
+        if random_sample is True:
+            pool_index = np.asarray(random.sample(range(0, pool_subset_dropout.size(0)), Queries))
+        else:
+            points_of_interest = acquisition_function(dropout_iterations, pool_data_dropout, pool_target_dropout)
+            pool_index = points_of_interest.argsort()[-Queries:][::-1]
+        pool_index = torch.from_numpy(np.flip(pool_index,axis=0).copy())
+        pool_all = np.append(pool_all, pool_index)
+
+        pooled_data = pool_data_dropout[pool_index]
+        pooled_target = pool_target_dropout[pool_index]
+        train_data  = torch.cat((train_data, pooled_data),0)
+        train_target = torch.cat((train_target,pooled_target), 0)
+        train_loss, val_loss, test_loss, val_accuracy, test_accuracy = train_test_val_loop(disable_test=False)
+
+        val_loss_hist.append(val_loss)
+        val_acc_hist.append(val_accuracy)
+
+        test_loss_hist.append(test_loss)
+
+        train_loss_hist.append(train_loss)
+
+        test_acc_hist.append(test_accuracy)
+
+    np.save("./val_loss_" + argument +".npy",np.asarray(val_loss_hist))
+    np.save("./val_acc_" + argument + ".npy", np.asarray(val_acc_hist))
+    np.save("./train_loss_" + argument + ".npy", np.asarray(train_loss_hist))
+    np.save("./test_loss_" + argument + ".npy", np.asarray(test_loss_hist))
+    np.save("./test_acc_" + argument + ".npy", np.asarray(test_acc_hist))
+
+        #it seems the author deleted the acquired points from the train set, I don't think that it would be useful to do
+        # because the data is randomly everytime, the probability of selecting the same batch is very very low
+
+def max_entroy_acquisition(dropout_iterations, pool_data_dropout, pool_target_dropout):
+    print("MAX ENTROPY FUNCTION")
+    score_All = np.zeros(shape=(pool_data_dropout.size(0), nb_classes))
+
+    # Validation Dataset
+    pool = data_utils.TensorDataset(pool_data_dropout, pool_target_dropout)
+    pool_loader = data_utils.DataLoader(pool, batch_size=batch_size, shuffle=True)
+    start_time = time.time()
+    for d in range(dropout_iterations):
+        _, _, predictions = evaluate(pool_loader, stochastic=True)
+
+        predictions = np.array(predictions)
+        #predictions = np.expand_dims(predictions, axis=1)
+        score_All = score_All + predictions
+    print("Dropout Iterations took --- %s seconds ---" % (time.time() - start_time))
+    # print (All_Dropout_Classes)
+    Avg_Pi = np.divide(score_All, dropout_iterations)
+    Log_Avg_Pi = np.log2(Avg_Pi)
+    Entropy_Avg_Pi = - np.multiply(Avg_Pi, Log_Avg_Pi)
+    Entropy_Average_Pi = np.sum(Entropy_Avg_Pi, axis=1)
+
+    U_X = Entropy_Average_Pi
+
+    points_of_interest = U_X.flatten()
+    return  points_of_interest
+
+
+def mean_std_acquisition(dropout_iterations, pool_data_dropout, pool_target_dropout):
+    print("MEAN STD ACQUISITION FUNCTION")
+    all_dropout_scores = np.zeros(shape=(pool_data_dropout.size(0), 1))
+    # Validation Dataset
+    pool = data_utils.TensorDataset(pool_data_dropout, pool_target_dropout)
+    pool_loader = data_utils.DataLoader(pool, batch_size=batch_size, shuffle=True)
+    start_time = time.time()
+    for d in range(dropout_iterations):
+        _, _, scores = evaluate(pool_loader, stochastic=True)
+
+        scores = np.array(scores)
+        all_dropout_scores = np.append(all_dropout_scores, scores, axis=1)
+    print("Dropout Iterations took --- %s seconds ---" % (time.time() - start_time))
+    std_devs= np.zeros(shape = (pool_data_dropout.size(0),nb_classes))
+    sigma = np.zeros(shape = (pool_data_dropout.size(0)))
+    for t in range(pool_data_dropout.size(0)):
+        for r in range( nb_classes ):
+            L = np.array([0])
+            for k in range(r + 1, all_dropout_scores.shape[1], 10 ):
+                L = np.append(L, all_dropout_scores[t, k])
+
+            L_std = np.std(L[1:])
+            std_devs[t, r] = L_std
+        E = std_devs[t, :]
+        sigma[t] = sum(E)/nb_classes
+
+
+    points_of_interest = sigma.flatten()
+    return points_of_interest
+
+def bald_acquisition(dropout_iterations, pool_data_dropout, pool_target_dropout):
+    print ("BALD ACQUISITION FUNCTION")
+    score_all = np.zeros(shape=(pool_data_dropout.size(0), nb_classes))
+    all_entropy = np.zeros(shape=pool_data_dropout.size(0))
+
+    # Validation Dataset
+    pool = data_utils.TensorDataset(pool_data_dropout, pool_target_dropout)
+    pool_loader = data_utils.DataLoader(pool, batch_size=batch_size, shuffle=True)
+    start_time = time.time()
+    for d in range(dropout_iterations):
+        _, _, scores = evaluate(pool_loader, stochastic=True)
+
+        scores = np.array(scores)
+        #predictions = np.expand_dims(predictions, axis=1)
+        score_all = score_all + scores
+
+        log_score = np.log2(scores)
+        entropy = - np.multiply(scores, log_score)
+        entropy_per_dropout = np.sum(entropy,axis =1)
+        all_entropy = all_entropy + entropy_per_dropout
+
+
+    print("Dropout Iterations took --- %s seconds ---" % (time.time() - start_time))
+    # print (All_Dropout_Classes)
+    avg_pi = np.divide(score_all, dropout_iterations)
+    log_avg_pi = np.log2(avg_pi)
+    entropy_avg_pi = - np.multiply(avg_pi, log_avg_pi)
+    entropy_average_pi = np.sum(entropy_avg_pi, axis=1)
+
+    g_x = entropy_average_pi
+    average_entropy = np.divide(all_entropy,dropout_iterations)
+    f_x = average_entropy
+
+    u_x = g_x - f_x
+
+
+    # THIS FINDS THE MINIMUM INDEX
+    # a_1d = U_X.flatten()
+    # x_pool_index = a_1d.argsort()[-Queries:]
+
+
+    points_of_interest = u_x.flatten()
+    return  points_of_interest
+
+def variation_ratios_acquisition(dropout_iterations, pool_data_dropout, pool_target_dropout):
+    print("VARIATIONAL RATIOS ACQUSITION FUNCTION")
+    All_Dropout_Classes = np.zeros(shape=(pool_data_dropout.size(0), 1))
+    # Validation Dataset
+    pool = data_utils.TensorDataset(pool_data_dropout, pool_target_dropout)
+    pool_loader = data_utils.DataLoader(pool, batch_size=batch_size, shuffle=True)
+    start_time = time.time()
+    for d in range(dropout_iterations):
+        _, _, predictions = evaluate(pool_loader, stochastic=True,predict_classes=True)
+
+        predictions = np.array(predictions)
+        predictions = np.expand_dims(predictions, axis=1)
+        All_Dropout_Classes = np.append(All_Dropout_Classes, predictions, axis=1)
+    print("Dropout Iterations took --- %s seconds ---" % (time.time() - start_time))
+    # print (All_Dropout_Classes)
+    Variation = np.zeros(shape=(pool_data_dropout.size(0)))
+    for t in range(pool_data_dropout.size(0)):
+        L = np.array([0])
+        for d_iter in range(dropout_iterations):
+            L = np.append(L, All_Dropout_Classes[t, d_iter + 1])
+        Predicted_Class, Mode = mode(L[1:])
+        v = np.array([1 - Mode / float(dropout_iterations)])
+        Variation[t] = v
+    points_of_interest = Variation.flatten()
+    return points_of_interest
+
+
 def init_model():
     global model
     global optimizer
@@ -265,7 +470,6 @@ def init_model():
 
     decay = 3.5 / train_data.size(0)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=decay)
-
 def train_test_val_loop(init_train_set, disable_test = True):
     if init_train_set:
         initialize_train_set()
@@ -285,6 +489,7 @@ def train_test_val_loop(init_train_set, disable_test = True):
         test_loss, test_accuracy = test(epoch)
     return  train_loss,val_loss,test_loss,val_accuracy,test_accuracy
 
+
 def main(argv):
     start_time = time.time()
     print (str(argv[0]))
@@ -295,9 +500,14 @@ def main(argv):
         train_loss = train(epoch)
         val_loss, accuracy = val(epoch)
 
+    print ("acquring points")
+    acquire_points(str(argv[0]))
+    init_model()
+    print ("Training again")
+    train_test_val_loop(init_train_set=True,disable_test=False)
+
     print("--- %s seconds ---" % (time.time() - start_time))
 
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-# In[ ]:
