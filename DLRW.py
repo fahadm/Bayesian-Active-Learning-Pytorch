@@ -31,19 +31,20 @@ nb_filters = 32
 # size of pooling area for max pooling
 nb_pool = 2
 # convolution kernel size
-nb_conv = 3
+nb_conv = 4
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if cuda else {}
 train_loader_all = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=True, download=True,
                    transform=transforms.Compose([
                        transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
+                      # transforms.Normalize((0.1307,), (0.3081,))
                    ])),
     batch_size=batch_size, shuffle=True, **kwargs)
 test_loader = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=False, transform=transforms.Compose([
-                       transforms.ToTensor()
+                       transforms.ToTensor(),
+                     #  transforms.Normalize((0.1307,), (0.3081,))
                    ])),
     batch_size=batch_size, shuffle=True, **kwargs)
 def prepare_data():
@@ -54,7 +55,7 @@ def prepare_data():
     train_data_all = train_data_all[shuffler_idx]
     train_target_all = train_target_all[shuffler_idx]
 
-
+    
     train_data = []
     train_target = []
     train_data_val = train_data_all[10000:10100, :,:]
@@ -62,8 +63,8 @@ def prepare_data():
     train_data_pool = train_data_all[20000:60000, :,:]
     train_target_pool = train_target_all[20000:60000]
 
-    train_data_all = train_data_all[0:10000,:,:]
-    train_target_all = train_target_all[0:10000]
+#    train_data_all = train_data_all[0:10000,:,:]
+    #train_target_all = train_target_all[0:10000]
 
     train_data_val.unsqueeze_(1)
     train_data_pool.unsqueeze_(1)
@@ -80,7 +81,7 @@ def prepare_data():
         target_i = train_target_all.numpy()[idx[0][0:2]]
         train_data.append(data_i)
         train_target.append(target_i)
-    train_data = np.concatenate(train_data, axis = 0).astype('float32')
+    train_data = np.concatenate(train_data, axis = 0).astype("float32")
     train_target = np.concatenate(train_target, axis=0)
     return torch.from_numpy(train_data/255).float(), torch.from_numpy(train_target) , train_data_val/255,train_target_val, train_data_pool/255, train_target_pool
 
@@ -92,12 +93,15 @@ val_loader = None
 def initialize_train_set():
     # Training Data set
     global train_loader
+    global train_data 
     train = data_utils.TensorDataset(train_data, train_target)
     train_loader = data_utils.DataLoader(train, batch_size=batch_size, shuffle=True)
 
 def initialize_val_set():
     global val_loader
+    global val_data
     #Validation Dataset
+
     val = data_utils.TensorDataset(val_data,val_target)
     val_loader = data_utils.DataLoader(val,batch_size=batch_size, shuffle = True)
 
@@ -149,18 +153,28 @@ class Net_Correct(nn.Module):
 
         self.conv = nn.Sequential(
             nn.Conv2d(1, nb_filters, kernel_size=nb_conv),
+            nn.Dropout2d(0.25),
             nn.ReLU(),
             nn.Conv2d(nb_filters, nb_filters, kernel_size=nb_conv),
+            nn.Dropout2d(0.25),
             nn.ReLU(),
             nn.MaxPool2d(nb_pool),
-            nn.Dropout(0.25),
+            nn.Dropout2d(0.25),
+            #nn.Conv2d(nb_filters, nb_filters*2, kernel_size=nb_conv),
+            #nn.ReLU(),
+            #nn.Conv2d(nb_filters*2, nb_filters*2, kernel_size=nb_conv),
+            #nn.ReLU(),
+            #nn.MaxPool2d(nb_pool),
+            #nn.Dropout(0.25)
+
+            
         )
         input_size = self._get_conv_output_size(input_shape)
-        self.fc = nn.Sequential(
-            nn.Linear(input_size,128),
+        self.dense = nn.Sequential(nn.Linear(input_size,256))
+	self.fc = nn.Sequential(
             nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(128,nb_classes)
+            nn.Linear(256,nb_classes)
         )
     def _get_conv_output_size(self, shape):
         bs = batch_size
@@ -172,7 +186,7 @@ class Net_Correct(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        x = self.fc(self.dense(x))
         return x
 
 model = None
@@ -191,7 +205,7 @@ def train(epoch):
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
-    if epoch == epochs:
+    if epoch or  epochs:
         print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
             epoch, batch_idx * len(data), len(train_loader.dataset),
             100. * batch_idx / len(train_loader), loss.data[0]))
@@ -255,7 +269,7 @@ def test(epoch):
     test_loss, correct,_ =  evaluate(test_loader, stochastic= False)
 
     test_loss /= len(test_loader) # loss function already averages over batch size
-    if epoch == epochs:
+    if epoch or  epochs:
         print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
@@ -279,6 +293,7 @@ def getAcquisitionFunction(name):
 def acquire_points(argument,random_sample=False):
     global train_data
     global train_target
+    
     acquisition_iterations = 98
     dropout_iterations = 50
     Queries = 10
@@ -296,23 +311,39 @@ def acquire_points(argument,random_sample=False):
     train_loss_hist = []
     for i in range(acquisition_iterations):
         pool_subset = 2000
+        if random_sample:
+            pool_subset = Queries
         print ("Acquisition Iteration " + str(i))
         pool_subset_dropout = torch.from_numpy( np.asarray(random.sample(range(0, pool_data.size(0)), pool_subset)))
         pool_data_dropout = pool_data[pool_subset_dropout]
         pool_target_dropout = pool_target[pool_subset_dropout]
         if random_sample is True:
-            pool_index = np.asarray(random.sample(range(0, pool_subset_dropout.size(0)), Queries))
+            pool_index = np.array(range(0,Queries))
+
         else:
             points_of_interest = acquisition_function(dropout_iterations, pool_data_dropout, pool_target_dropout)
             pool_index = points_of_interest.argsort()[-Queries:][::-1]
-        pool_index = torch.from_numpy(np.flip(pool_index,axis=0).copy())
+
+            # np.save(argument + "_Points_scores_all.npy", points_of_interest)
+            # np.save(argument + "_Points_data_all.npy", pool_data_dropout.numpy() )
+            # np.save(argument + "_Points_target_all.npy", pool_target_dropout.numpy())
+            # np.save(argument+ "_Points_scores.npy",points_of_interest[pool_index.numpy()])
+            # np.save(argument+ "_Points_targets.npy",pool_target_dropout[pool_index].numpy())
+            # np.save (argument+ "_Points_data.npy",pool_target_dropout[pool_index].numpy())
+            # exit()
+
+        pool_index = torch.from_numpy(np.flip(pool_index, axis=0).copy())
+
         pool_all = np.append(pool_all, pool_index)
 
         pooled_data = pool_data_dropout[pool_index]
         pooled_target = pool_target_dropout[pool_index]
         train_data  = torch.cat((train_data, pooled_data),0)
         train_target = torch.cat((train_target,pooled_target), 0)
-        train_loss, val_loss, test_loss, val_accuracy, test_accuracy = train_test_val_loop(disable_test=False)
+
+        #remove from pool set
+        remove_pooled_points(pool_subset,pool_data_dropout,pool_target_dropout,pool_index)
+        train_loss, val_loss, test_loss, val_accuracy, test_accuracy = train_test_val_loop(init_train_set=True,disable_test=False)
 
         val_loss_hist.append(val_loss)
         val_acc_hist.append(val_accuracy)
@@ -331,6 +362,30 @@ def acquire_points(argument,random_sample=False):
 
         #it seems the author deleted the acquired points from the train set, I don't think that it would be useful to do
         # because the data is randomly everytime, the probability of selecting the same batch is very very low
+
+def remove_pooled_points(pool_subset, pool_data_dropout, pool_target_dropout, pool_index):
+    global pool_data
+    global pool_target
+    np_data = pool_data.numpy()
+    np_target = pool_target.numpy()
+    pool_data_dropout = pool_data_dropout.numpy()
+    pool_target_dropout = pool_target_dropout.numpy()
+    np_index =  pool_index.numpy()
+    np.delete(np_data, pool_subset,axis =0)
+    np.delete(np_target, pool_subset,axis =0)
+
+    np.delete(pool_data_dropout,np_index,axis = 0)
+    np.delete(pool_target_dropout,np_index, axis=0)
+
+    np_data = np.concatenate((np_data,pool_data_dropout),axis =0)
+    np_target = np.concatenate((np_target, pool_target_dropout),axis =0)
+
+    pool_data = torch.from_numpy(np_data)
+    pool_target = torch.from_numpy(np_target)
+
+
+
+
 
 def max_entroy_acquisition(dropout_iterations, pool_data_dropout, pool_target_dropout):
     print("MAX ENTROPY FUNCTION")
@@ -469,7 +524,12 @@ def init_model():
         model.cuda()
 
     decay = 3.5 / train_data.size(0)
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=decay)
+    optimizer = optim.Adam([ 
+			{'params':model.conv.parameters()},
+			{'params':model.fc.parameters()},
+                
+                {'params': model.dense.parameters(), 'weight_decay': decay}
+            ], lr=lr)
 def train_test_val_loop(init_train_set, disable_test = True):
     if init_train_set:
         initialize_train_set()
@@ -499,7 +559,6 @@ def main(argv):
     for epoch in range(1, epochs + 1):
         train_loss = train(epoch)
         val_loss, accuracy = val(epoch)
-
     print ("acquring points")
     acquire_points(str(argv[0]))
     init_model()
