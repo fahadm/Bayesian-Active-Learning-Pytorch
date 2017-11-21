@@ -109,44 +109,6 @@ def initialize_val_set():
 initialize_train_set()
 initialize_val_set()
 
-
-
-# class Net(nn.Module):
-#     def __init__(self):
-#         super(Net, self).__init__()
-# #         self.conv1 = nn.Conv2d(1, nb_filters, kernel_size=nb_conv)
-# #         self.conv2 = nn.Conv2d(nb_filters, 20, kernel_size=5)
-# #         self.conv2_drop = nn.Dropout2d()
-# #         self.fc1 = nn.Linear(320, 50)
-# #         self.fc2 = nn.Linear(50, 10)
-#         self.conv = nn.Sequential(
-#             nn.Conv2d(1, nb_filters, kernel_size=nb_conv),
-#             nn.ReLU(),
-#             nn.Conv2d(nb_filters, nb_filters, kernel_size=nb_conv),
-#             nn.ReLU(),
-#             nn.MaxPool2d(nb_pool),
-#             nn.Dropout(0.25),
-#             nn.Conv2d(nb_filters, nb_filters*2, kernel_size=nb_conv),
-#             nn.ReLU(),
-#             nn.Conv2d(nb_filters*2, nb_filters*2, kernel_size=nb_conv),
-#             nn.ReLU(),
-#             nn.MaxPool2d(nb_pool),
-#             nn.Dropout(0.25)
-#         )
-#         self.fc = nn.Sequential(
-#             nn.Linear(1024,100),
-#             nn.ReLU(),
-#             nn.Dropout(0.5),
-#             nn.Linear(100,nb_classes)
-#         )
-#
-#     def forward(self, x):
-#         x = self.conv(x)
-#         x = x.view(batch_size, -1)
-#         x = self.fc(x)
-#         return F.Softmax(x)
-
-
 class Net_Correct(nn.Module):
     def __init__(self, input_shape=(1, 28, 28)):
         super(Net_Correct, self).__init__()
@@ -160,12 +122,7 @@ class Net_Correct(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(nb_pool),
             nn.Dropout2d(0.25),
-            #nn.Conv2d(nb_filters, nb_filters*2, kernel_size=nb_conv),
-            #nn.ReLU(),
-            #nn.Conv2d(nb_filters*2, nb_filters*2, kernel_size=nb_conv),
-            #nn.ReLU(),
-            #nn.MaxPool2d(nb_pool),
-            #nn.Dropout(0.25)
+         
 
             
         )
@@ -323,15 +280,7 @@ def acquire_points(argument,random_sample=False):
         else:
             points_of_interest = acquisition_function(dropout_iterations, pool_data_dropout, pool_target_dropout)
             pool_index = points_of_interest.argsort()[-Queries:][::-1]
-
-            # np.save(argument + "_Points_scores_all.npy", points_of_interest)
-            # np.save(argument + "_Points_data_all.npy", pool_data_dropout.numpy() )
-            # np.save(argument + "_Points_target_all.npy", pool_target_dropout.numpy())
-            # np.save(argument+ "_Points_scores.npy",points_of_interest[pool_index.numpy()])
-            # np.save(argument+ "_Points_targets.npy",pool_target_dropout[pool_index].numpy())
-            # np.save (argument+ "_Points_data.npy",pool_target_dropout[pool_index].numpy())
-            # exit()
-
+         
         pool_index = torch.from_numpy(np.flip(pool_index, axis=0).copy())
 
         pool_all = np.append(pool_all, pool_index)
@@ -361,7 +310,7 @@ def acquire_points(argument,random_sample=False):
     np.save("./test_acc_" + argument + ".npy", np.asarray(test_acc_hist))
 
         #it seems the author deleted the acquired points from the train set, I don't think that it would be useful to do
-        # because the data is randomly everytime, the probability of selecting the same batch is very very low
+        # because the data is random everytime, the probability of selecting the same batch is very very low
 
 def remove_pooled_points(pool_subset, pool_data_dropout, pool_target_dropout, pool_index):
     global pool_data
