@@ -43,7 +43,7 @@ Pygments==2.2.0
 pyparsing==2.2.0
 python-dateutil==2.6.0
 pytz==2017.2
-PyYAML==5.1
+PyYAML==5.4
 pyzmq==16.0.2
 qtconsole==4.3.0
 scandir==1.5
